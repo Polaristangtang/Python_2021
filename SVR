@@ -1,0 +1,209 @@
+# -*- coding: utf-8 -*-
+"""
+Created on --
+
+@author: Not me
+"""
+
+from sklearn.svm import SVR
+import numpy as np
+import xlrd
+import matplotlib.pyplot as plt
+import random
+from sklearn.decomposition import PCA
+from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import mean_squared_error
+from sklearn.metrics import r2_score
+
+
+RMSE0 = [0]
+R_square0 = [0]
+
+def excel2m(path,sheetname):
+    data = xlrd.open_workbook(path)
+    table = data.sheet_by_name(sheetname)
+    nrows = table.nrows
+    ncols = table.ncols
+    datamatrix = np.zeros((nrows, ncols))
+    for x in range(ncols):
+        cols = table.col_values(x)
+
+        datamatrix[:, x] = cols
+    return datamatrix 
+
+#read feature data and transform to matrix
+matrix1=excel2m('data.xlsx','Sheet1')
+matrix1=np.array(matrix1) #matrix1=preprocessing.scale(matrix1)
+
+
+#read target data (truth data)
+matrix0=excel2m('data.xlsx','Sheet2')
+matrix0=np.array(matrix0)
+
+y_Yie=matrix0[:]
+y_Yie=y_Yie[:, np.newaxis]
+
+#y_Yie=y_Yie[:, np.newaxis]
+#ss_y_Yie = StandardScaler()
+#std_y_Yie = ss_y_Yie.fit_transform(y_Yie)
+#Yie_mean=np.mean(std_y_Yie)
+#Yie_std=np.std(std_y_Yie)
+#print(Yie_mean, Yie_std)
+
+
+#  PCA
+X1=matrix1
+
+m_ = 31
+trainingSets = list(range(m_))
+random.shuffle(trainingSets)
+n = 4
+batch=int(m_/n)
+
+
+for j in range(n):
+    testSet = trainingSets[(j)*batch:(j + 1)*batch]
+    trainingSet  = trainingSets[:(j)*batch] + trainingSets[(j + 1)*batch:]
+    print(trainingSet)
+    print(testSet)
+    
+    matrix1_train=X1[trainingSet]
+    matrix1_test=X1[testSet]
+    
+    matrix2=matrix1
+
+    y_Yie_train=y_Yie[trainingSet]
+    y_Yie_test=y_Yie[testSet]
+      
+    print("1D train",np.concatenate((y_Yie_train), axis=0))
+    print("1D test",np.concatenate((y_Yie_test), axis=0))
+    
+    y_Yie_train=np.concatenate((y_Yie_train), axis=0)
+    y_Yie_test=np.concatenate((y_Yie_test), axis=0)
+    
+#PCA trating  
+    pca = PCA(n_components=0.85)
+    matrix1_train_p= pca.fit(matrix1_train).transform(matrix1_train)
+    matrix1_test_p=pca.transform(matrix1_test)
+    x2_p= pca.transform(matrix2)
+    print(matrix1_train.shape)
+    print(matrix1_train_p.shape)
+    print('Contribution:{}'.format(pca.explained_variance_ratio_))
+                             
+    
+    ss_y_Yie_train = StandardScaler()
+    std_y_Yie_train = ss_y_Yie_train.fit_transform(y_Yie_train)
+    std_y_Yie_test = ss_y_Yie_train.transform(y_Yie_test)
+    Yie_mean_train=np.mean(std_y_Yie_train)
+    Yie_std_train=np.std(std_y_Yie_train)
+    print(Yie_mean_train, Yie_std_train)
+    
+    
+#  SVR regression x-feature matrix; y-target matrix
+    def regression(train_x,train_y,test_x):
+
+        clf = SVR(gamma='scale', C=1.0, epsilon=0.2) #  build an object
+        clf.fit(train_x, train_y.ravel()) #  training the model
+#  y1=best_model.predict(test_x)
+        print("clf.intercept=",clf.intercept_)
+        print("clf.gamma=",clf.gamma)
+        print("clf.kernel=",clf.kernel)
+        y1 = clf.predict(test_x) # use the trained model
+        return y1
+
+    
+# RMSE R_square compulate
+    def regressionEvaluate(target,prediction):
+       
+        error = []
+        for i in range(len(target)):
+            error.append(target[i] - prediction[i])
+    
+        squaredError = []
+        for val in error:    
+            squaredError.append(val * val)
+        
+        meanTarget=sum(target)/len(target)
+        dettarget = []
+        for i in range(len(target)):
+            dettarget.append(target[i]-meanTarget)
+        
+        squaredDetTarget = []
+        for val in dettarget:
+            squaredDetTarget.append(val*val)
+        
+        SSE=np.sum(squaredError)
+        SST=np.sum(squaredDetTarget)
+    
+        RMSE=np.sqrt(SSE/len(target))
+        R_square=1-(SSE/SST)
+        
+        print(len(target))
+        print("SSE=",SSE)
+        print("SST=",SST)
+        
+        return RMSE, R_square
+    
+         
+    y_Yie_pred1 = regression(matrix1_train_p,std_y_Yie_train,matrix1_test_p)
+    origin_y_Yie_test = ss_y_Yie_train.inverse_transform(std_y_Yie_test)
+    origin_y_Yie_pred1 = ss_y_Yie_train.inverse_transform(y_Yie_pred1)
+    
+    print("origin_y_Yie_pred1=", origin_y_Yie_pred1)
+
+
+    RMSE2, R_square2 = regressionEvaluate(origin_y_Yie_test,origin_y_Yie_pred1)
+    y_Yie_pred2 = regression(matrix1_train_p,std_y_Yie_train,x2_p)   
+    origin_y_Yie_pred2 = ss_y_Yie_train.inverse_transform(y_Yie_pred2)
+    print("origin_y_Yie_pred2=", origin_y_Yie_pred2)
+    
+    y_Yie2=np.concatenate((y_Yie), axis=0)
+    y_Yie3=np.concatenate((y_Yie2), axis=0)
+
+    r2_y_Yie_pred2=r2_score(y_Yie3,origin_y_Yie_pred2)
+    r2_y_Yie_pred2=format(r2_y_Yie_pred2,'.2f') 
+    print("r2_y_Yie_pred2=",r2_score(y_Yie3,origin_y_Yie_pred2))  
+    
+    rmse_y_Yie_pred2=np.sqrt(mean_squared_error(y_Yie3,origin_y_Yie_pred2))
+    rmse_y_Yie_pred2=format(rmse_y_Yie_pred2,'.2f')    
+    print("rmse_y_Yie_pred2=",rmse_y_Yie_pred2)    
+   
+    
+    RMSE0=np.c_[RMSE0,RMSE2]
+    R_square0=np.c_[R_square0,R_square2]
+
+    
+########################################################
+print("RMSE and R2 over all test data")
+np.delete(RMSE0, 0 , axis=1)
+np.delete(R_square0, 0 , axis=1)
+RMSE=np.mean(RMSE0,axis=1)
+R_square=np.mean(R_square0,axis=1)
+print(np.mean(RMSE0,axis=1))
+print(np.mean(R_square0,axis=1))
+
+
+
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+xx1=[0,300]
+yy1=xx1
+#plt.rcParams['font.sans-serif'] = ['SimHei']
+#plt.figure()
+fig=plt.figure()
+#plt.xticks([0, 300, 600, 900, 1200, 1500])
+#plt.yticks([0, 300, 600, 900, 1200, 1500])
+
+
+plt.plot(y_Yie3,origin_y_Yie_pred2, 'ro' )
+plt.plot(xx1,yy1,'k')
+#plt.legend()
+#plt.title('Compare of Bio_S1')
+plt.xlabel('Yield_measured(g/${m^2}$)')
+plt.ylabel('Yield_simulated(g/${m^2}$)')
+plt.xlim(0.0,300.0)
+plt.ylim(0.0,300.0)
+
+plt.text(200, 190, (" y = x "),size=13, alpha = 1)
+plt.text(150,100, (" ${R^2}$=", r2_y_Yie_pred2), size=13, alpha = 1)
+plt.text(150, 70, (" RMSE=", rmse_y_Yie_pred2),size=13, alpha = 1)
+plt.savefig('ZM_Yield')
